@@ -98,3 +98,7 @@ Contributors:
 - Tuna Korkmaz  
 
 This repository represents Tuna Korkmaz’s portfolio version of the project, with refined documentation and presentation.
+
+## Example Visualization
+
+![Regional Passport Strength Trend](images/Analysis_1.png)
