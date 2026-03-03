@@ -1,0 +1,82 @@
+---
+title: Proposal
+---
+
+```{r}
+#| label: load-pkgs
+#| message: false
+library(tidyverse)
+```
+
+# Data
+
+The data for this analysis come from the Henley Passport Index API produced by Henley & Partners. The Henley Passport Index measures passport strength by counting the number of destinations passport holders can enter without obtaining a traditional pre-departure visa. The dataset is updated regularly by Henley & Partners to reflect changing international travel agreements.
+
+The dataset used here was distributed through the TidyTuesday project and created by Brenden Smith and Jen Richmond. It provides analysis ready tables derived from the Henley Passport Index data. The dataset consists of two primary files: country_lists.csv and rank_by_year.csv.
+
+The country_lists dataset contains country codes and names, along with structured (JSON) lists of destinations grouped by visa requirement category: visa_required, visa_online, visa_on_arrival, visa_free_access, and electronic_travel_authorization.
+The rank_by_year dataset contains yearly passport rankings and summary metrics including country code, country name, region, passport rank, total visa-free destination count, and year of observation.
+
+We chose this dataset because we love traveling and we want to learn more about traveling restrictions for global citizens. It allow us to see and analyze how restrictive some countries are compared to others and reason with why some countries may have certain restrictions (or lack thereof). 
+
+```{r}
+#| label: load-data
+
+country_lists <- read_csv("data/country_lists.csv")
+rank_by_year <- read_csv("data/rank_by_year.csv")
+
+glimpse(country_lists)
+glimpse(rank_by_year)
+
+colnames(rank_by_year)
+```
+
+The country lists dataset contains 199 rows and 7 columns, while the rankings dataset contains 3950 rows and 6 columns. Below is code that confirms these numbers in the rankings dataset, verifies we have data for all 199 countries, and tells us the earliest and latest years we have data recorded for.
+
+```{r}
+#| label: grabbing-data-info
+rank_by_year |>
+  summarise(
+    n_rows = n(),
+    n_countries = n_distinct(country),
+    year_min = min(year, na.rm = TRUE),
+    year_max = max(year, na.rm = TRUE)
+  )
+```
+
+# Questions
+
+1.  Which countries are in the top 5 for the greatest gains in passport power, and which fall into the bottom 5 for the largest losses in power?
+
+
+2. How does the average visa accessibility score vary by region, and which regions rank highest/lowest on this score?
+
+# Analysis plan
+
+A plan for answering each of the questions including the variables involved, variables to be created (if any), external data to be merged in (if any). This should also include a feasibility assessment on how the data you have can be used to answer the questions you stated.
+
+1. Variables needed are year, country, and visa_free_access. We would need extra information for presidential changes which we will obtain from the internet. It is all public data. Very feasible. To visualize our question we will create a faceted time series line plot. The x-axis will be the year and the y-axis represents visa-free access. Each country will have its own panel, and vertical dashed lines in the faceted panels will indicate the president transition years. For our country selection, since the dataset includes a large number of countries, we will focus on countries that have the highest number of presidential changes in the past two decades. This will allow us to have an objective selection criteria. 
+
+2. We will create a new variable called visa accessibility score by giving all entry types different numerical values: visa required: 0, visa_on_arrival: 0.25 , visa free: 1 pt, electronic_travel_authorisation & visa_online: 0.5. The other variables we need are region and country. Scores are averaged across countries in the region to measure overall ease of entry. Higher averages indicate less strict policies. Highly feasible since visa policy data is readily available and easily quantified. To visualize this, we can make a bar chart of the average visa accessibility score by region (sorted from highest to lowest). We can also explore including a boxplot of country-level scores by region to show within region variability and outliers in the data.
+
+
+# References
+
+<!-- Don't touch this section, it will automatically pull your references. -->
+
+::: {#refs}
+:::
+
+# Resources
+
+## AI
+
+State whether you've used AI resources in developing your project. If yes, cite them as you usually do in your homework assignments. If no, explicitly state so.
+
+We have not used AI.
+
+## Other
+
+State whether you've used non-AI resources, other than those provided as part of course materials, in developing your project. If yes, cite them as you usually do in your homework assignments. If no, explicitly state so.
+
+We did not yet use any external sources.

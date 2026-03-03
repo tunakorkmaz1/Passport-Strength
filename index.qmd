@@ -1,0 +1,440 @@
+---
+execute:
+  echo: false
+  message: false
+  warning: false
+abstract: |
+   This project uses TidyTuesday’s Henley Passport Index data in order to study how global travel access and passport strengths vary across countries and different regions over time. We define passport strength as the number of visa-free destinations from a given country, and identify the five biggest gains and five biggest losses from 2019 (pre-pandemic baseline) to 2025. We also went beyond individual countries in order to compare travel accessibility at the regional and subregional levels from 2006 to 2025. This was done by constructing an accessibility score based on passport ranking, and tracking how averages among regions evolved over time using UN subregion classifications. Finally, this project explored differences in how each region’s access is distributed across visa-free, visa on arrival, e-visa, ETA, and visa required categories. Overall, this analysis highlights that passport strength is highly unequal and appears geographically clustered.
+---
+
+# Introduction
+
+The data for our project data was collected by @brendensm and @jonthegeek and distributed via @tidytuesday. 
+
+The data for this analysis come from the Henley Passport Index API produced by Henley & Partners, which measures passport strength by counting the number of destinations passport holders can enter without obtaining a traditional pre-departure visa. The index is updated regularly to reflect changes in international travel agreements and entry requirements. The version used in this project was distributed through the TidyTuesday project and prepared by Brenden Smith and Jen Richmond, who organized the original Henley Passport Index data into analysis-ready tables. The dataset consists of two primary files, country_lists.csv and rank_by_year.csv, which together provide both detailed visa-category destination lists and yearly passport ranking summaries.
+
+The country_lists dataset contains country codes and names along with structured (JSON) lists of destinations grouped by visa requirement category, including visa_required, visa_online, visa_on_arrival, visa_free_access, and electronic_travel_authorization. The rank_by_year dataset contains yearly passport rankings and summary variables such as country code, country name, region, passport rank, total visa-free destination count, and year of observation. We chose this dataset because we enjoy traveling and wanted to better understand travel restrictions faced by global citizens. It allows us to compare how restrictive different passports are and to think about why some countries may have more or fewer restrictions than others.
+
+# **Question 1**: Top 5 Gains and Bottom 5 Losses in Passport Power (2019-2025)
+
+## Introduction
+
+This question asks which countries experienced the largest changes in passport power between 2019 and 2025, focusing on the top five gains and the bottom five losses over that period. Although COVID-19 began spreading globally in late 2019, major worldwide travel disruptions occurred in 2020, so 2019 is used here as a pre-pandemic baseline. In this analysis, passport power is defined using visa_free_count, which represents the number of destinations that holders of a country’s passport can access without obtaining a traditional pre-departure visa. To measure change, each country’s visa_free_count in 2025 is compared with its value in 2019, and the difference (2025 - 2019) is calculated. Positive values indicate gains in passport power, while negative values indicate losses. To answer this question, the analysis primarily uses the rank_by_year dataset because it contains the yearly passport-level summary information needed for this comparison. The main variables required are country name (or country code), year, and visa_free_count. This question is especially interesting because it helps show how global mobility has shifted from a pre-pandemic baseline to the post-pandemic period, while also highlighting which countries experienced the biggest improvements or declines in travel access.
+
+## Approach
+
+For the first plot, a diverging bar chart will be used to show the top 5 countries with the largest gains and the bottom 5 countries with the largest losses in passport power from 2019 to 2025, where passport power is measured by the change in visa_free_count (2025 - 2019). In this chart, countries with positive changes will extend to the right and countries with negative changes will extend to the left, which makes both the direction and magnitude of change easy to compare in a single figure. A bar chart is well suited for this task because the goal is to compare values across a small set of countries, and the diverging layout clearly separates gains from losses without requiring multiple plots. Color mapping will also be used (for example, one color for gains and another for losses) to make the contrast more immediate and easier to interpret.
+
+The second plot summarizes this same data and groups the countries by their rank to create group averages. It takes the top 5 countries and group them to create a top 5 average visa_free_count and does the same for the bottom 5 countries, for the years 2019-2025. Instead of just stating the difference over this time, a line graph combined with a scatterplot will be used to show how the visa_free_count averages change over the years for the top and bottom 5. A line plot is useful to show the changes and how they connect to previous years, while the points show the exact average at each year. The averages is to make the graph less cluttered and more concise while still conveying the same ideas. This plot will use the same color mapping from the first plot, for the top 5 and bottom 5, to distinguish them from each other while having consistency. 
+
+
+## Analysis
+```{r}
+#| label: load-prep-data
+#| message: false
+#| warning: false
+library(tidyverse)
+library(ggthemes)
+library(jsonlite)
+```
+
+```{r}
+#| label: transforming-data-for-ranks
+#| message: false
+df_passport <- read_csv("data/rank_by_year.csv") |>
+  mutate(country = as.factor(country))
+passport_plot_data <- df_passport |>
+  filter(year %in% c(2019, 2025)) |>
+  group_by(country) |>
+  filter(n() == 2) |>
+  ungroup() |>
+  select(country, year, visa_free_count) |>
+  pivot_wider(
+    names_from = year,
+    values_from = visa_free_count,
+    names_prefix = "yr_"
+  ) |>
+  mutate(
+    change_visa_free_count = yr_2025 - yr_2019,
+    neg_pos = if_else(change_visa_free_count >= 0, "pos", "neg"),
+    label_position = if_else(neg_pos == "pos", -0.5, 0.5)
+  )
+
+top_5 <- passport_plot_data |>
+  slice_max(change_visa_free_count, n = 5, with_ties = FALSE)
+bottom_5 <- passport_plot_data |>
+  slice_min(change_visa_free_count, n = 5, with_ties = FALSE)
+final_plot_df <- bind_rows(top_5, bottom_5) |>
+  distinct(country, .keep_all = TRUE) |>
+  mutate(country = fct_reorder(country, change_visa_free_count))
+```
+
+```{r}
+#| label: created-rank-bar-plot
+ggplot(final_plot_df, aes(y = country, x = change_visa_free_count)) +
+  geom_vline(xintercept = 0) +
+  geom_col(aes(fill = neg_pos), show.legend = FALSE) +
+  geom_text(
+    aes(
+      x = 0,
+      label = str_remove(country, " \\(.*\\)"),
+      color = neg_pos,
+      hjust = if_else(neg_pos == "pos", 1.1, -0.1)
+    ),
+    show.legend = FALSE,
+    fontface = "bold"
+  ) +
+  geom_text(
+    aes(
+      label = paste0(
+        if_else(change_visa_free_count > 0, "+", ""),
+        change_visa_free_count
+      ),
+      hjust = if_else(neg_pos == "pos", 1.2, -0.2)
+    ),
+    color = "white",
+    fontface = "bold"
+  ) +
+  scale_fill_manual(values = c("neg" = "#800000", "pos" = "#001f3f")) +
+  scale_color_manual(values = c("neg" = "#800000", "pos" = "#001f3f")) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5)
+  ) +
+  labs(
+    y = NULL,
+    title = "Passport Power Shifts (2019–2025)",
+    subtitle = "Top 5 Gains and Losses",
+    caption = "Source: Henley Passport Index rank_by_year.csv",
+    x = "Changes in Visa Free Count"
+  )
+
+```
+
+```{r}
+#| label: wrangling-for-line-plot
+ranks_by_year <- df_passport |>
+  filter((country %in% final_plot_df$country) & between(year, 2019, 2025)) |>
+  group_by(country)
+
+top_5_avg <- ranks_by_year |>
+  slice_max(visa_free_count, n = 5, with_ties = FALSE) |>
+  group_by(year) |>
+  summarize(
+    year_average_top = mean(visa_free_count)
+  )
+bottom_5_avg <- ranks_by_year |>
+  slice_min(visa_free_count, n = 5, with_ties = FALSE) |>
+  group_by(year) |>
+  summarize(
+    year_average_bottom = mean(visa_free_count)
+  )
+
+rank_by_year_final <- bind_rows(top_5_avg, bottom_5_avg) |>
+  pivot_longer(
+    cols = c(year_average_top, year_average_bottom),
+    names_to = "section",
+    values_to = "average"
+  ) |>
+  drop_na() |>
+  mutate(
+    section = fct_relevel(section, c("year_average_top", "year_average_bottom"))
+  )
+
+
+```
+
+```{r}
+#| label: created-rank-line-plot
+#| fig-width: 10
+#| fig-asp: 0.4
+
+ggplot(
+  rank_by_year_final,
+  aes(x = year, y = average, group = section, color = section, fill = section)
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(color = "white", shape = 21, size = 3, show.legend = FALSE) +
+  scale_color_manual(
+    values = c(
+      "year_average_bottom" = "#800000",
+      "year_average_top" = "#001f3f"
+    ),
+    labels = c(
+      "year_average_bottom" = "Bottom 5 Average",
+      "year_average_top" = "Top 5 Average"
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      "year_average_bottom" = "#800000",
+      "year_average_top" = "#001f3f"
+    )
+  ) +
+  scale_x_continuous(
+    breaks = seq(2019, 2025, by = 1)
+  ) +
+  labs(
+    x = "Year",
+    color = "Section",
+    fill = "Section",
+    title = "Average Changes in the Visa Free Count for the Top 5 and Bottom 5 Countries",
+    subtitle = "2019-2025",
+    caption = "Source: Henley Passport Index rank_by_year.csv",
+    y = "Visa Free Count"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.title = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+
+```
+
+
+## Discussion
+
+(1-3 paragraphs): In the Discussion section, interpret the results of your analysis. Identify any trends revealed (or not revealed) by the plots. Speculate about why the data looks the way it does.
+
+
+
+
+The second plot expands on the explanations given by the first plot by having averages for the countries with the top losses and gains. The plot shows that the top 5 average started out lower than the bottom 5 average, but by the first quarter in 2019, the average increased at a steep rate. From there on, the average for top 5 remained high over the average for bottom 5 except when there was about a 20 count drop in 2023. The countries in the bottom 5, on average, did not experience grand changes in their visa free count and had more gradual changes along the years, with drops in 2020 and 2024. Surprisingly, there doesn’t seem to be big trends across the plot and especially in 2020 when Covid hit, the top 5 average shot up while the bottom 5 slightly decreased — it doesn’t show a clear explanation when they should’ve both went down due to global travel restrictions.
+
+# **Question 2**: Title that relates to the question you're answering
+
+## Introduction
+
+Passport strength varies greatly across the world’s countries, with some passport holders being able to travel to over 100 countries freely, while others face restrictions almost everywhere they want to go. In our Question 2 analysis, we explore how visa accessibility differs across global regions and subregions, and how visa accessibility changes over time. Specifically, we asked: How does the average visa accessibility score vary by region, and which regions rank highest and lowest on this score? We used different parts of three datasets to answer this question. 
+
+The first two come from the Henley Passport Index. The rank_by_year.csv file provided us with yearly passport rankings for 199 countries from 2006 to 2025, including each country's region and total visa-free destination count. The country_lists.csv file provided us with a more detailed breakdown of each passport's destinations by access type, which included 5 categories: visa-free, visa on arrival, e-visa, ETA, and visa required. This information is stored in the data set as nested JSON lists. The third dataset is one we acquired from the United Nations (UN) called UN Statistics Division Methodology, which provides a classification of countries into subregions, like Western Europe, Sub-Saharan Africa, and South-eastern Asia. These three files let us analyze both the overall strength of passports over time at the subregion level, and how that strength is distributed across different types of visa accessibility in the country lists dataset.
+
+## Approach
+
+To answer this question, we created two separate visualizations. For the first plot, we gave each country an ‘accessibility score’ at a given moment in time. The score is computed as mean(1 - rank / 116) * 100,  so that higher values indicate stronger passports. We first divide the rank of an individual country to the maximum rank a country can have (116), then subtract it from 1 and multiply by 100. This is done to flip the idea of lower rank meaning more power to higher score meaning more power. Finally, we repeat this process for each county and then average it to the number of countries in that subregion with the mean function. We then created a time-series line chart showing the average accessibility score per subregion from 2006 to 2025. Countries were assigned to subregions by joining the rank_by_year data with the UNSD Methodology classification on their ISO-2 country codes, giving us 17 unique subregions. 
+
+A line chart felt like the natural choice here because it captures temporal trends for multiple groups simultaneously, allowing us to see which subregions rank highest or lowest at any given point,  and how the gaps between them widen and narrow as time passes. Color is used to map each line to its subregion. In this plot, we decided to leave out the subregions of Polynesia, Micronesia, and Melanesia due to the fact that they represented a proportionally much smaller number of countries, and cluttered the visualization and decreasing readability. The second plot we made is a stacked bar chart. This chart shows, for the year 2025,  the average proportion for each region of visa accessibility categories, for each of the 7 regions coming from our country_lists.csv dataset. This visualization compliments the previous one because instead of seeing how overall ranks are affected over time, we see what those visa accessibility rankings are actually composed of regarding type of accessibility at our most recent point of reference in time.
+
+## Analysis
+
+```{r}
+library(viridis)
+rank_by_year <- read_csv("data/rank_by_year.csv")
+country_lists <- read_csv("data/country_lists.csv")
+unsd <- read_csv2("data/UNSD_Methodology.csv")
+
+# cleaning unsd
+unsd_clean <- unsd |>
+  select(iso2 = `ISO-alpha2 Code`, subregion = `Sub-region Name`) |>
+  filter(!is.na(iso2), iso2 != "")
+
+# Namibia, Kosovo, and Taiwan didnt have pairings to a subregion for some reason
+extra_mappings <- tibble(
+  iso2 = c("XK", "TW", "NA"),
+  subregion = c("Eastern Europe", "Eastern Asia", "Sub-Saharan Africa")
+)
+
+unsd_clean <- bind_rows(unsd_clean, extra_mappings)
+```
+
+
+```{r}
+years_to_show <- c(2006, 2010, 2014, 2018, 2022, 2025)
+legend_order <- c(
+  "Western Europe",
+  "Northern Europe",
+  "Southern Europe",
+  "Eastern Europe",
+  "Western Asia",
+  "Central Asia",
+  "Southern Asia",
+  "Eastern Asia",
+  "South-eastern Asia",
+  "Northern Africa",
+  "Sub-Saharan Africa",
+  "Northern America",
+  "Latin America and the Caribbean",
+  "Australia and New Zealand"
+)
+# Give subregions their scores, leave out Melanesia, Micronesia, Polynesia for vis reasons
+subregion_rank <- rank_by_year |>
+  filter(year %in% years_to_show) |>
+  left_join(unsd_clean, by = c("code" = "iso2")) |>
+  filter(
+    !is.na(subregion),
+    !subregion %in% c("Melanesia", "Micronesia", "Polynesia")
+  ) |>
+  group_by(subregion, year) |>
+  summarise(
+    avg_score = mean((1 - rank / 116) * 100, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(subregion = factor(subregion, levels = legend_order))
+
+subregion_rank |>
+  ggplot(aes(x = year, y = avg_score, colour = subregion, group = subregion)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  scale_colour_viridis_d(
+    breaks = legend_order,
+    option = "turbo",
+    begin = 0,
+    end = 1
+  ) +
+  scale_x_continuous(
+    breaks = years_to_show
+  ) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    breaks = seq(0, 100, by = 20)
+  ) +
+  labs(
+    x = "Year",
+    y = "Average Accessibility Score (0-100)",
+    colour = "Subregion",
+    title = "Visa Accessibility by Sub-region Over Time",
+    subtitle = "Average accessibility score per subregion (2006–2025), higher score = greater visa-free access",
+    caption = "Sources: Passport Index rank_by_year.csv, UN Statistics Division (UNSD) subregion classification"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 15),
+    plot.caption = element_text(size = 8, color = "black", hjust = 1),
+    plot.caption.position = "plot",
+    legend.title = element_text(face = "bold")
+  )
+```
+
+```{r}
+# JSON parsing
+region_map <- rank_by_year |>
+  filter(year == 2025) |>
+  select(code, region)
+
+# Helper: safely parse JSON array string -> count of destinations
+count_destinations <- function(x) {
+  parsed <- jsonlite::fromJSON(x)
+  sum(sapply(parsed, nrow))
+}
+
+region_access <- country_lists |>
+  select(
+    code,
+    visa_required,
+    visa_online,
+    visa_on_arrival,
+    visa_free_access,
+    electronic_travel_authorisation
+  ) |>
+  pivot_longer(
+    cols = -code,
+    names_to = "access_type",
+    values_to = "json_val"
+  ) |>
+  mutate(
+    access_type = recode(
+      access_type,
+      "electronic_travel_authorisation" = "eta",
+      "visa_free_access" = "visa_free"
+    ),
+    access_type = factor(
+      access_type,
+      levels = c(
+        "visa_required",
+        "visa_online",
+        "visa_on_arrival",
+        "eta",
+        "visa_free"
+      )
+    ),
+    n_destinations = map_int(json_val, count_destinations)
+  ) |>
+  # Join to get region
+  inner_join(region_map, by = "code") |>
+  # Aggregate to region level
+  group_by(region, access_type) |>
+  summarise(
+    avg_destinations = mean(n_destinations, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+region_order <- region_access |>
+  filter(access_type == "visa_free") |>
+  arrange(avg_destinations) |>
+  pull(region)
+
+region_access <- region_access |>
+  mutate(region = factor(region, levels = region_order))
+
+region_access |>
+  ggplot(aes(x = region, y = avg_destinations, fill = access_type)) +
+  geom_col(position = "fill") +
+  scale_fill_viridis_d(
+    option = "D",
+    labels = c(
+      eta = "ETA",
+      visa_free = "Visa Free",
+      visa_on_arrival = "Visa on Arrival",
+      visa_online = "Visa Online",
+      visa_required = "Visa Required"
+    )
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Region",
+    y = "Share of Destinations (%)",
+    fill = "Access Type",
+    title = "Visa Access Type Composition by Region (2025)",
+    subtitle = "Proportion of destinations per access type, averaged across passports in each region",
+    caption = "Sources: Passport Index country_lists.csv, rank_by_year.csv"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 15),
+    plot.caption = element_text(size = 8, color = "black", hjust = 1),
+    plot.caption.position = "plot",
+    legend.title = element_text(face = "bold")
+  )
+```
+
+## Discussion
+
+From the line chart, we can see that there is a clear and persistent power in visa accessibility over the 2006–2025 period across subregions in the world designated by the UN. Western Europe, Northern Europe, Northern America and Australia & New Zealand are constantly at the top of the chart with scores above 90 throughout the entire period, reflecting strong bilateral travel agreements these countries have established over time. When we look at the exact opposite end of the plot, Southern Asia and Sub-Saharan Africa remain at the bottom of the chart throughout the 20 years and their scores stay largely below 40. One of the most interesting findings is how stable these rankings remain, as almost two decades of data shows very little change in ordering, highlighting how structural passport inequalities are. Among some of the subregions that have gained power, one that we can emphasize is Eastern Europe which shows a gradual upward trend over the period. We think this reflects the expansion of the European Union (EU) and Schengen Area access for countries such as Bulgaria, Romania, and Croatia who have joined the EU recently. Other subregions to be highlighted are Central Asia and Southern Asia as they have a slight dip from 2018 to 2022, which may be related to travel disruptions and banned visa status during the COVID period.
+
+The stacked bar chart complements our findings in the line plot as it dives deeper into why these regions the score of accessibility. Europe stands out by far as it has the largest visa-free share with over 50% of all destinations and also a quite smaller visa-required portion compared to any other region with less than 25%. The visa-free and visa-required portions are basically flipped for Africa and the Middle East. For the 2 regions visa-required destinations account for nearly 55–60% of all destinations on average. One of the details we think is important to mention is the miniscule portion of the ETA (Electronic Travel Authorisation) across most regions. This likely reflects the fact that ETA is a newer system introduced by countries such as Australia, Canada, and the United Kingdom. Overall, the visa-on-arrival and visa-online segments remain relatively stable in size across all seven regions, which suggest that the real driver of the accessibility gap is the trade-off between visa-free and visa-required destinations.
+
+The two plots paint a consistent picture of global visa accessibility being highly unequal, geographically clustered, and slow to change. The regions and subregions that were most accessible in 2006 remain the most accessible in 2025. One explanation for this constant relationship is visa agreements tending to be reciprocal: Governments grant access to passport holders whose governments also grant them access. So it makes it difficult for lower-ranked countries to break into higher ranks. 
+
+# References
+
+<!-- Don't touch this section, it will automatically pull your references. -->
+
+::: {#refs}
+:::
+
+# Resources
+
+United Nations, Department of Economic and Social Affairs, Statistics Division - Methodology: Standard country or area codes for statistical use (M49). 2025. 
+https://unstats.un.org/unsd/methodology/m49/overview
+
+## AI
+
+Question 1 Plot 1
+
+Question 1 Plot 2
+I didn’t use an LLM / Generative AI tool for this question
+
+Question 2 Plot 1
+I didn’t use an LLM / Generative AI tool for this question
+
+Question 2 Plot 2
+I used Claude Sonnet 4.6.
+I asked it to help write code to answer the question.
+https://claude.ai/share/ba953cc3-c5b3-4663-b70f-b545b809b18f
+
+## Other
+
+State whether you've used non-AI resources, other than those provided as part of course materials, in developing your project. If yes, cite them as you usually do in your homework assignments. If no, explicitly state so.

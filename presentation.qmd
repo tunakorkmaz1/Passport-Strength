@@ -1,0 +1,378 @@
+---
+title: "Global Passport Strengths"
+subtitle: "STA313 Spring 2026 - Project 1"
+author: "Standard Deviants"
+format:
+  revealjs:
+    slide-number: true
+    slide-number-format: "{current}"
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+```{r}
+#| label: load-packages
+#| include: false
+library(tidyverse)
+library(jsonlite)
+```
+
+```{r}
+#| label: load-data
+#| include: false
+country_lists <- read_csv("data/country_lists.csv")
+rank_by_year <- read_csv("data/rank_by_year.csv")
+unsd <- read_csv2("data/UNSD_Methodology.csv")
+```
+
+## Henley Passport Index {.smaller}
+
+Data distributed via **TidyTuesday**, prepared by Brenden Smith and Jen Richmond from the **Henley Passport Index** API by Henley & Partners.
+
+- **country_lists.csv** — 199 passports with destinations broken down by access type: visa-free, visa on arrival, e-visa, ETA, and visa required
+- **rank_by_year.csv** — yearly passport rankings for 199 countries from 2006 to 2025, including region and total visa-free destination count
+
+We chose this dataset because we love traveling and wanted to better understand the travel restrictions faced by citizens around the world.
+
+**Questions explored:**
+
+1. Which countries are in the top 5 for the greatest gains in passport power, and which fall into the bottom 5 for the largest losses in power?
+2. How does the average visa accessibility score vary by region, and which regions rank highest/lowest on this score?
+
+
+
+
+## Top Gains and Losses in Visa-Free Travel {.smaller}
+
+```{r}
+#| label: quesstion1-plot1-data
+#| include: false
+df_passport <- read_csv("data/rank_by_year.csv") |>
+  mutate(country = as.factor(country))
+passport_plot_data <- df_passport |>
+  dplyr::filter(year %in% c(2019, 2025)) |>
+  group_by(country) |>
+  dplyr::filter(n() == 2) |>
+  ungroup() |>
+  select(country, year, visa_free_count) |>
+  pivot_wider(
+    names_from = year,
+    values_from = visa_free_count,
+    names_prefix = "yr_"
+  ) |>
+  mutate(
+    change_visa_free_count = yr_2025 - yr_2019,
+    neg_pos = if_else(change_visa_free_count >= 0, "pos", "neg"),
+    label_position = if_else(neg_pos == "pos", -0.5, 0.5)
+  )
+
+top_5 <- passport_plot_data |>
+  slice_max(change_visa_free_count, n = 5, with_ties = FALSE)
+bottom_5 <- passport_plot_data |>
+  slice_min(change_visa_free_count, n = 5, with_ties = FALSE)
+final_plot_df <- bind_rows(top_5, bottom_5) |>
+  distinct(country, .keep_all = TRUE) |>
+  mutate(country = fct_reorder(country, change_visa_free_count))
+```
+
+```{r}
+#| label: question1plot1
+#| fig-width: 10
+#| fig-asp: 0.6
+#| fig-align: center
+ggplot(final_plot_df, aes(y = country, x = change_visa_free_count)) +
+  geom_vline(xintercept = 0) +
+  geom_col(aes(fill = neg_pos), show.legend = FALSE) +
+  geom_text(
+    aes(
+      x = 0,
+      label = str_remove(country, " \\(.*\\)"),
+      color = neg_pos,
+      hjust = if_else(neg_pos == "pos", 1.1, -0.1)
+    ),
+    show.legend = FALSE,
+    fontface = "bold"
+  ) +
+  geom_text(
+    aes(
+      label = paste0(
+        if_else(change_visa_free_count > 0, "+", ""),
+        change_visa_free_count
+      ),
+      hjust = if_else(neg_pos == "pos", 1.2, -0.2)
+    ),
+    color = "white",
+    fontface = "bold"
+  ) +
+  scale_fill_manual(values = c("neg" = "#800000", "pos" = "#001f3f")) +
+  scale_color_manual(values = c("neg" = "#800000", "pos" = "#001f3f")) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5)
+  ) +
+  labs(
+    y = NULL,
+    title = "Passport Power Shifts (2019–2025)",
+    subtitle = "Top 5 Gains and Losses",
+    caption = "Source: Henley Passport Index rank_by_year.csv",
+    x = "Changes in Visa Free Count"
+  )
+
+```
+
+## Average Yearly Changes \n in Visa-Free Travel {.smaller}
+
+```{r}
+#| label: q1plot2-data
+#| include: false
+
+ranks_by_year <- df_passport |>
+  filter((country %in% final_plot_df$country) & between(year, 2019, 2025)) |>
+  group_by(country)
+
+top_5_avg <- ranks_by_year |>
+  slice_max(visa_free_count, n = 5, with_ties = FALSE) |>
+  group_by(year) |>
+  summarize(
+    year_average_top = mean(visa_free_count)
+  )
+bottom_5_avg <- ranks_by_year |>
+  slice_min(visa_free_count, n = 5, with_ties = FALSE) |>
+  group_by(year) |>
+  summarize(
+    year_average_bottom = mean(visa_free_count)
+  )
+
+rank_by_year_final <- bind_rows(top_5_avg, bottom_5_avg) |>
+  pivot_longer(
+    cols = c(year_average_top, year_average_bottom),
+    names_to = "section",
+    values_to = "average"
+  ) |>
+  drop_na() |>
+  mutate(
+    section = fct_relevel(section, c("year_average_top", "year_average_bottom"))
+  )
+
+
+```
+
+```{r}
+#| label: q1plot2
+#| fig-width: 10
+#| fig-asp: 0.4
+#| fig-align: center
+
+ggplot(
+  rank_by_year_final,
+  aes(x = year, y = average, group = section, color = section, fill = section)
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(color = "white", shape = 21, size = 3, show.legend = FALSE) +
+  scale_color_manual(
+    values = c(
+      "year_average_bottom" = "#800000",
+      "year_average_top" = "#001f3f"
+    ),
+    labels = c(
+      "year_average_bottom" = "Bottom 5 Average",
+      "year_average_top" = "Top 5 Average"
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      "year_average_bottom" = "#800000",
+      "year_average_top" = "#001f3f"
+    )
+  ) +
+  scale_x_continuous(
+    breaks = seq(2019, 2025, by = 1)
+  ) +
+  labs(
+    x = "Year",
+    color = "Section",
+    fill = "Section",
+    title = "Average changes in the Visa Free Count for the Top 5 and Bottom 5 Countries",
+    subtitle = "2019-2025",
+    caption = "Source: Henley Passport Index rank_by_year.csv",
+    y = "Visa Free Count"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.title = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+
+```
+
+## Visa Accessibility by Sub-region Over Time {.smaller}
+
+```{r}
+#| label: plot1-data
+#| include: false
+
+# cleaning unsd
+unsd_clean <- unsd |>
+ select(iso2 = `ISO-alpha2 Code`, subregion = `Sub-region Name`) |>
+ filter(!is.na(iso2), iso2 != "")
+
+# Namibia, Kosovo, and Taiwan didnt have pairings to a subregion for some reason
+extra_mappings <- tibble(
+ iso2      = c("XK", "TW", "NA"),
+ subregion = c("Eastern Europe", "Eastern Asia", "Sub-Saharan Africa")
+)
+
+unsd_clean <- bind_rows(unsd_clean, extra_mappings)
+
+years_to_show <- c(2006, 2010, 2014, 2018, 2022, 2025)
+legend_order <- c(
+ "Western Europe",
+ "Northern Europe",
+ "Southern Europe",
+ "Eastern Europe",
+ "Western Asia",
+ "Central Asia",
+ "Southern Asia",
+ "Eastern Asia",
+ "South-eastern Asia",
+ "Northern Africa",
+ "Sub-Saharan Africa",
+ "Northern America",
+ "Latin America and the Caribbean",
+ "Australia and New Zealand"
+)
+# Give subregions their scores, leave out Melanesia, Micronesia, Polynesia for vis reasons
+subregion_rank <- rank_by_year |>
+ filter(year %in% years_to_show) |>
+ left_join(unsd_clean, by = c("code" = "iso2")) |>
+ filter(!is.na(subregion), !subregion %in% c("Melanesia", "Micronesia", "Polynesia")) |>
+ group_by(subregion, year) |>
+ summarise(avg_score = mean((1 - rank / 116) * 100, na.rm = TRUE), .groups = "drop") |>
+ mutate(subregion = factor(subregion, levels = legend_order))
+
+```
+
+```{r}
+#| label: plot1
+#| fig-width: 10
+#| fig-asp: 0.6
+#| fig-align: center
+subregion_rank |>
+ ggplot(aes(x = year, y = avg_score, colour = subregion, group = subregion)) +
+ geom_line(size = 1) +
+ geom_point(size = 2) +
+ scale_colour_viridis_d(breaks = legend_order, option = "turbo", begin = 0, end = 1) +
+ scale_x_continuous(
+   breaks = years_to_show
+ ) +
+ scale_y_continuous(
+ limits = c(0, 100),
+ breaks = seq(0, 100, by = 20)
+ ) +
+ labs(
+   x = "Year",
+   y = "Average Accessibility Score (0-100)",
+   colour = "Subregion",
+   title = "Visa Accessibility by Sub-region Over Time",
+   subtitle = "Average accessibility score per subregion (2006–2025), higher score = greater visa-free access",
+   caption = "Sources: Passport Index rank_by_year.csv, UN Statistics Division (UNSD) subregion classification"
+ ) +
+ theme_minimal() +
+ theme(
+   plot.title = element_text(face = "bold", size = 15),
+   plot.caption = element_text(size = 8, color = "black", hjust = 1),
+   plot.caption.position = "plot",
+   legend.title = element_text(face = "bold")
+ )
+```
+
+## Visa Access Type Composition by Region (2025) {.smaller}
+
+```{r}
+#| label: plot2-data
+#| include: false
+#| # JSON parsing
+region_map <- rank_by_year |>
+ filter(year == 2025) |>
+ select(code, region)
+
+# Helper: safely parse JSON array string -> count of destinations
+count_destinations <- function(x) {
+ parsed <- jsonlite::fromJSON(x)
+ sum(sapply(parsed, nrow))
+}
+
+region_access <- country_lists |>
+ select(code, visa_required, visa_online, visa_on_arrival,
+        visa_free_access, electronic_travel_authorisation) |>
+ pivot_longer(
+   cols = -code,
+   names_to = "access_type",
+   values_to = "json_val"
+ ) |>
+ mutate(
+   access_type = recode(access_type,
+     "electronic_travel_authorisation" = "eta",
+     "visa_free_access" = "visa_free"
+   ),
+   access_type = factor(access_type, levels = c(
+     "visa_required", "visa_online", "visa_on_arrival", "eta", "visa_free"
+   )),
+   n_destinations = map_int(json_val, count_destinations)
+ ) |>
+ # Join to get region
+ inner_join(region_map, by = "code") |>
+ # Aggregate to region level
+ group_by(region, access_type) |>
+ summarise(avg_destinations = mean(n_destinations, na.rm = TRUE), .groups = "drop")
+
+region_order <- region_access |>
+ filter(access_type == "visa_free") |>
+ arrange(avg_destinations) |>
+ pull(region)
+
+region_access <- region_access |>
+ mutate(region = factor(region, levels = region_order))
+
+```
+
+```{r}
+#| label: plot2
+#| fig-width: 10
+#| fig-asp: 0.6
+#| fig-align: center
+region_access |>
+ ggplot(aes(x = region, y = avg_destinations, fill = access_type)) +
+ geom_col(position = "fill") +
+ scale_fill_viridis_d(
+   option = "D",
+   labels = c(
+     eta = "ETA",
+     visa_free = "Visa Free",
+     visa_on_arrival = "Visa on Arrival",
+     visa_online = "Visa Online",
+     visa_required = "Visa Required"
+   )
+ ) +
+ scale_y_continuous(labels = scales::percent) +
+ labs(
+   x = "Region",
+   y = "Share of Destinations (%)",
+   fill = "Access Type",
+   title = "Visa Access Type Composition by Region (2025)",
+   subtitle = "Proportion of destinations per access type, averaged across passports in each region",
+   caption = "Sources: Passport Index country_lists.csv, rank_by_year.csv"
+ ) +
+ theme_minimal() +
+ theme(
+   plot.title = element_text(face = "bold", size = 15),
+   plot.caption = element_text(size = 8, color = "black", hjust = 1),
+   plot.caption.position = "plot",
+   legend.title = element_text(face = "bold")
+ )
+```
