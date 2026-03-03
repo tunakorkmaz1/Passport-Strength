@@ -99,6 +99,12 @@ Contributors:
 
 This repository represents Tuna Korkmaz’s portfolio version of the project, with refined documentation and presentation.
 
-## Example Visualization
+## Example Visualizations
 
-![Regional Passport Strength Trend](images/Analysis_1.png)
+### Regional Trend Over Time
+
+![Passport Strength Trend](images/analysis1.png)
+
+### Visa Accessibility Composition by Region
+
+![Visa Accessibility Breakdown](images/analysis2.png)
